@@ -1,0 +1,28 @@
+name: Update Notion Exchange Rates
+
+on:
+  schedule:
+    # UTC 0点 = 北京时间早上8点，每天跑一次
+    - cron: "0 0 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  update-rates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run update script
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        run: python update_rates.py

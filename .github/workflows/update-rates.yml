@@ -31,7 +31,8 @@ jobs:
         run: python update_rates.py
 
       - name: Record run timestamp (keeps repo active, prevents 60-day auto-disable)
-        run: echo "Last run: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" > last_run.txt
+        run: |
+          echo "Last run: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" > last_run.txt
 
       - name: Commit keepalive marker
         run: |

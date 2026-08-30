@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-自动给 Notion「订阅管理」数据库更新汇率。
+自动给 Notion「订阅项目」数据库更新汇率。
 
 逻辑：
 1. 读取数据库里每一行的「货币」（原始扣款货币）和「目标货币」（想要折算成的货币）
-2. 用 https://api.frankfurter.dev 拿到实时汇率（免费、无需 API key、覆盖 160+ 货币）
+2. 用 ExchangeRate-API 拿到实时汇率（免费，需要一个免费注册的 API key）
 3. 把汇率写回「汇率」字段，把当前时间写回「汇率更新时间」字段
-   （数据库里的「折合金额」是公式字段，会自动用新汇率重新计算，不需要脚本去改）
 
 需要的环境变量（在 GitHub Actions 的 Secrets 里配置）：
-- NOTION_TOKEN        Notion Integration 的密钥（以 secret_ 或 ntn_ 开头）
-- NOTION_DATABASE_ID  订阅管理数据库的 ID
+- NOTION_TOKEN              Notion Integration 的密钥
+- NOTION_DATABASE_ID        订阅项目数据库的 ID
+- EXCHANGERATE_API_KEY      在 exchangerate-api.com 免费注册拿到的 key
 """
 
 import os
@@ -21,6 +21,7 @@ import requests
 
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
 DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
+EXCHANGERATE_API_KEY = os.environ["EXCHANGERATE_API_KEY"]
 
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -30,16 +31,14 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-EXCHANGE_API = "https://api.frankfurter.dev/v2/rate"
+EXCHANGE_API = f"https://v6.exchangerate-api.com/v6/{EXCHANGERATE_API_KEY}/latest"
 
-# select 选项里货币的显示格式统一是 "XXX 中文名"（如 "USD 美元" / "TWD新台币"）
-# 取前 3 个字符就是标准 ISO 货币代码
+
 def currency_code(select_value: str) -> str:
     return select_value[:3].strip().upper()
 
 
 def get_all_pages():
-    """分页拉取数据库里所有行"""
     pages = []
     payload = {"page_size": 100}
     while True:
@@ -61,17 +60,20 @@ def get_rate(base: str, target: str, rate_cache: dict) -> float:
     """带缓存地获取 base -> target 的汇率"""
     if base == target:
         return 1.0
-    key = (base, target)
-    if key not in rate_cache:
-        resp = requests.get(f"{EXCHANGE_API}/{base}/{target}", timeout=15)
-        if not resp.ok:
+    if base not in rate_cache:
+        resp = requests.get(f"{EXCHANGE_API}/{base}", timeout=15)
+        data = resp.json()
+        if data.get("result") != "success":
             print(
-                f"[汇率接口异常] {base}->{target} status={resp.status_code} body={resp.text[:300]}",
+                f"[汇率接口异常] base={base} response={data}",
                 file=sys.stderr,
             )
-        resp.raise_for_status()
-        rate_cache[key] = resp.json()["rate"]
-    return rate_cache[key]
+            resp.raise_for_status()
+        rate_cache[base] = data["conversion_rates"]
+    rates = rate_cache[base]
+    if target not in rates:
+        raise ValueError(f"{base} -> {target} 汇率不存在，请检查货币代码是否正确")
+    return rates[target]
 
 
 def update_page_rate(page_id: str, rate: float):

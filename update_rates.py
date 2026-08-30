@@ -78,7 +78,7 @@ def update_page_rate(page_id: str, rate: float):
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     payload = {
         "properties": {
-            "汇率": {"number": round(rate, 6)},
+            "汇率": {"number": round(rate, 3)},
             "汇率更新时间": {"date": {"start": now_iso}},
         }
     }
